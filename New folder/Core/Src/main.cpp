@@ -46,7 +46,11 @@ using namespace std;
 /* Private variables ---------------------------------------------------------*/
 UART_HandleTypeDef huart2;
 
+TIM_HandleTypeDef htim11;
 /* USER CODE BEGIN PV */
+
+//Timer micro
+uint64_t _micro = 0;
 
 int column = 0;
 int row = 0;
@@ -54,6 +58,29 @@ float element[9] = {0,0,0,0,0,0,0,0,0};
 uint8_t numcount = 0;
 MatrixXf Ans;
 
+//Kalman Filter
+unsigned long currentTime = 0;
+unsigned long prevTime = 0;
+float delT = 0.0f;
+
+bool isFirstStep = true;
+
+//All Matrix
+MatrixXf Q(4, 4);
+MatrixXf R_Baro(1, 1);
+MatrixXf R_GPS(1, 1);
+MatrixXf X(4, 1);
+MatrixXf P(4, 4);
+MatrixXf I(4, 4);
+MatrixXf H_Baro(1, 4);
+MatrixXf H_GPS(1, 4);
+MatrixXf F(4,4);
+MatrixXf Z_Baro(1,1);
+MatrixXf K_Baro(4, 1);
+MatrixXf Z_GPS(1,1);
+MatrixXf K_GPS(4, 1);
+MatrixXf B(2,1);
+MatrixXf U(1,1);
 
 /* USER CODE END PV */
 
@@ -61,9 +88,22 @@ MatrixXf Ans;
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_USART2_UART_Init(void);
+static void MX_TIM11_Init(void);
 /* USER CODE BEGIN PFP */
 
+// Micros count
+uint64_t micros();
+
 void ShowoutputMatrix(uint8_t rows, uint8_t columns);
+void predict(float accel);
+void updateBaro(float altitude);
+void updateGPS(float gpsAltitude);
+
+// Return value
+float getKalmanPosition();
+float getKalmanVelocity();
+float getKalmanGravity();
+float getKalmanBias();
 
 /* USER CODE END PFP */
 
@@ -80,54 +120,34 @@ int main(void)
 {
   /* USER CODE BEGIN 1 */
 
-	MatrixXf table(3,3); 	// X = dynamic array ,d = double variable
-	table << 1,2,3
-			,4,5,6
-			,7,8,9;
+// Enter the matrix value.
+	Q << 1,0,0,0
+		,0,1,0,0
+		,0,0,1,0
+		,0,0,0,1;
 
-	MatrixXf table2(3,3);
-	table2 << 1,2,3
-			,4,5,6
-			,7,8,9;
+	R_Baro << 10;
 
-	VectorXf vec1(3);
-	vec1 << 1,2,3;
+	R_GPS << 100;
 
-	MatrixXf transposeonly(3,3);
-	transposeonly << 1,2,3
-					,4,5,6
-					,7,8,9;
+	X << 5
+		,0
+		,-9.81
+		,0;
 
-	MatrixXf m1(2,2);
-	m1 << 1,2,3,4;
+	P << 10,0,0,0
+		,0,1,0,0
+		,0,0,1,0
+		,0,0,0,100;
 
-	m1 = m1.transpose().eval();
+	I << 1,0,0,0
+		,0,1,0,0
+		,0,0,1,0
+		,0,0,0,1;
 
-	Ans = m1.inverse();
+	H_Baro << 1,0,0,1;
 
-//	Ans = transposeonly.transpose();
-
-//	Ans = table * vec1;
-
-//	Ans = table + table2;
-
-	ShowoutputMatrix(2,2);
-
-	Matrix <float, 2,2> table3;
-	table3.setZero(2,2);	// set all in Matrix to zeros
-	table3.setOnes(2,2);	// set all in Matrix to ones
-	table3.Constant(2,2,5); // set all in Matrix to constant(5)
-	table3(0,0) = 1;
-	table3(0,1) = 2;
-	table3(1,0) = 3;
-	table3(1,1) = 4;
-
-//	row = 1;
-//	column = 0;
-//	element[1] = Ans(row,column);
-
-
-
+	H_GPS << 1,0,0,0;
 
   /* USER CODE END 1 */
 
@@ -150,8 +170,11 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_USART2_UART_Init();
+  MX_TIM11_Init();
   /* USER CODE BEGIN 2 */
 
+  //Timer For implement micros()
+  	HAL_TIM_Base_Start_IT(&htim11);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -161,7 +184,6 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-
 
   }
   /* USER CODE END 3 */
@@ -212,10 +234,42 @@ void SystemClock_Config(void)
 }
 
 /**
+  * @brief TIM11 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM11_Init(void)
+{
+
+  /* USER CODE BEGIN TIM11_Init 0 */
+
+  /* USER CODE END TIM11_Init 0 */
+
+  /* USER CODE BEGIN TIM11_Init 1 */
+
+  /* USER CODE END TIM11_Init 1 */
+  htim11.Instance = TIM11;
+  htim11.Init.Prescaler = 99;
+  htim11.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim11.Init.Period = 65535;
+  htim11.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim11.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim11) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM11_Init 2 */
+
+  /* USER CODE END TIM11_Init 2 */
+
+}
+
+/**
   * @brief USART2 Initialization Function
   * @param None
   * @retval None
   */
+
 static void MX_USART2_UART_Init(void)
 {
 
@@ -279,6 +333,84 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
+// Timer Micro
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
+	if (htim == &htim11) {
+		_micro += 65535;
+	}
+}
+
+uint64_t micros() {
+	return _micro + htim11.Instance->CNT;
+}
+
+// Kalman Filter function
+
+void predict(float accel)
+{
+  currentTime = micros();
+  delT = (currentTime - prevTime) / 1000000.0f;
+//  data.loopTime = delT;
+  prevTime = currentTime;
+
+  if (!isFirstStep)
+  {
+    F <<
+        1, delT,-(delT*delT)/2.0, 0,
+        0, 1, -delT, 0,
+        0, 0, 1, 0,
+        0, 0, 0, 1;
+
+    B << delT * delT / 2.0,
+        delT,
+        0,
+        0;
+
+    U << accel;
+
+    X = (F * X) + (B * U);
+    P = (F * P * F.transpose()) + Q;
+  }
+  isFirstStep = false;
+}
+
+void updateBaro(float altitude)
+{
+  Z_Baro << altitude;
+  K_Baro << P * (H_Baro.transpose()) * (H_Baro * P * (H_Baro.transpose()) + R_Baro).inverse();
+
+  X = X + K_Baro * (Z_Baro - H_Baro * X);
+  P = (I - K_Baro * H_Baro) * P * ((I - K_Baro * H_Baro).transpose()) + K_Baro * R_Baro * (K_Baro.transpose());
+}
+
+void updateGPS(float gpsAltitude)
+{
+  Z_GPS << gpsAltitude;
+  K_GPS = P * (H_GPS.transpose()) * (H_GPS * P * (H_GPS.transpose()) + R_GPS).inverse();
+
+  X = X + K_GPS * (Z_GPS - H_GPS * X);
+  P = (I - K_GPS * H_GPS) * P * ((I - K_GPS * H_GPS).transpose()) + K_GPS * R_GPS * (K_GPS.transpose());
+}
+
+
+float getKalmanPosition() {
+  return X(0,0);
+}
+
+float getKalmanVelocity() {
+  return X(1,0);
+}
+
+
+float getKalmanGravity() {
+  return X(2,0);
+}
+
+float getKalmanBias() {
+  return X(3,0);
+}
+
+// Display Matrix
 void ShowoutputMatrix(uint8_t rows, uint8_t columns){
 	for(int i=0;i<rows;i++){
 		for(int j=0;j<columns;j++){
