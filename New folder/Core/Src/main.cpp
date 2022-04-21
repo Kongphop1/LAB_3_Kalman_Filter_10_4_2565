@@ -85,8 +85,10 @@ int main(void)
 			,4,5,6
 			,7,8,9;
 
-	MatrixXf table2(3,1);
-	table2 << 1,2,3;
+	MatrixXf table2(3,3);
+	table2 << 1,2,3
+			,4,5,6
+			,7,8,9;
 
 	VectorXf vec1(3);
 	vec1 << 1,2,3;
@@ -107,7 +109,18 @@ int main(void)
 
 //	Ans = table * vec1;
 
+//	Ans = table + table2;
+
 	ShowoutputMatrix(2,2);
+
+	Matrix <float, 2,2> table3;
+	table3.setZero(2,2);	// set all in Matrix to zeros
+	table3.setOnes(2,2);	// set all in Matrix to ones
+	table3.Constant(2,2,5); // set all in Matrix to constant(5)
+	table3(0,0) = 1;
+	table3(0,1) = 2;
+	table3(1,0) = 3;
+	table3(1,1) = 4;
 
 //	row = 1;
 //	column = 0;
