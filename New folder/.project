@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <projectDescription>
-	<name>Lab3_KalmanFilter_10_4_2565</name>
+	<name>Lab3_Kalman_Filter_21_4_2565</name>
 	<comment></comment>
 	<projects>
 	</projects>
@@ -30,11 +30,4 @@
 		<nature>org.eclipse.cdt.managedbuilder.core.managedBuildNature</nature>
 		<nature>org.eclipse.cdt.managedbuilder.core.ScannerConfigNature</nature>
 	</natures>
-	<linkedResources>
-		<link>
-			<name>kalman-master</name>
-			<type>2</type>
-			<location>D:/FRA233_control_engineering_Only_LAB2/library/KalmanFilter_with_not_arduino/kalman-master</location>
-		</link>
-	</linkedResources>
 </projectDescription>
